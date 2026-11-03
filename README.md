@@ -1,14 +1,15 @@
 # [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/)
 
-A Telegram shopping agent. You describe what you want once (a photo plus limits), and the agent
-holds a purchase mandate that it carries out on your behalf, within the limits you set, paying through PayPal.
-Background and scope decisions are in [docs/ideation.md](docs/ideation.md).
+**Standing Order** is a Telegram shopping agent. You describe what you need once, in text, optionally
+adding photos, videos or links, and set your limits. The agent finds the item, waits for the right price,
+and buys it through PayPal, never going past those limits.
+Background is in [docs/ideation.md](docs/ideation.md); the product pitch is in [docs/submission.md](docs/submission.md) and the demo video plan in [docs/storyboard.md](docs/storyboard.md).
 
 ## Status
 
 - [x] Telegram bot with `/buy <amount> <description>` that creates a PayPal sandbox order and sends a Pay button
 - [x] PayPal return page that captures the payment (once, even if reloaded) and confirms it in the chat
-- [ ] Photo to structured intent
+- [ ] Text request, with optional photos, videos or links, to a structured request
 - [ ] Product sourcing
 - [ ] Mandates with spending limits, price watching and a simulated clock
 - [ ] Saved payment method (vault) for purchases the agent makes on its own

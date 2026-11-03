@@ -16,7 +16,7 @@ HELP = (
     "I'm a shopping agent that buys on your behalf, within limits you set.\n\n"
     "For now you can test checkout:\n"
     "/buy <amount> <description> (for example /buy 12.50 Coffee beans)\n\n"
-    "Coming soon: send me a photo of what you want."
+    "Coming soon: tell me what you need in your own words, and add photos, videos or links if they help."
 )
 
 
@@ -52,4 +52,4 @@ async def on_buy(message: Message, command: CommandObject, checkout: Checkout) -
 
 @router.message(F.photo)
 async def on_photo(message: Message) -> None:
-    await message.answer("Got your photo. Visual intent extraction isn't wired up yet.")
+    await message.answer("Got your photo. I can't use attachments yet, but soon they'll help refine your request.")
