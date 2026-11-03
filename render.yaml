@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: intent-agent
+    runtime: python
+    # Free instances sleep when idle, which breaks price monitoring; use a paid plan for the demo.
+    plan: starter
+    buildCommand: pip install uv && uv sync --frozen --no-dev
+    startCommand: uv run --no-dev intent-agent
+    healthCheckPath: /healthz
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.13.14"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_WEBHOOK_SECRET
+        generateValue: true
+      - key: PAYPAL_CLIENT_ID
+        sync: false
+      - key: PAYPAL_CLIENT_SECRET
+        sync: false
+      - key: PUBLIC_BASE_URL
+        sync: false
+      - key: DATABASE_PATH
+        value: /var/data/app.db
+    disk:
+      name: data
+      mountPath: /var/data
+      sizeGB: 1
