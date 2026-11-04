@@ -8,6 +8,11 @@ class PayPalSettings(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    @classmethod
+    def settings_customise_sources(cls, settings_cls, init_settings, env_settings, dotenv_settings, file_secret_settings):
+        # This project's .env wins over variables exported in the shell, which may belong to something else.
+        return init_settings, dotenv_settings, env_settings, file_secret_settings
+
     paypal_client_id: str
     paypal_client_secret: str
     paypal_base_url: str = PAYPAL_SANDBOX_URL
@@ -25,6 +30,12 @@ class Settings(PayPalSettings):
     # and, when it is https, from Telegram (webhook mode). Locally, long polling is used instead.
     public_base_url: str = "http://localhost:8000"
     database_path: str = "data/app.db"
+
+    # If empty, the OpenAI SDK looks for credentials itself.
+    openai_api_key: str = ""
+    openai_model: str = "gpt-6.1-terra"
+    # Show notes about the simulated stores and /ff in the chat. Turn off when recording the demo video.
+    demo_hints: bool = True
 
     @property
     def use_webhook(self) -> bool:

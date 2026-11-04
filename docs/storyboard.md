@@ -39,18 +39,18 @@ Times are approximate. "VO" is the voiceover. Bot messages are written as they s
 
 ### 3. Sourcing and waiting (0:40–1:05)
 
-- **Screen:** the user taps **Start watching**. The bot lists three matches from mock merchants with prices
-  ($229, $219, $239). A **simulated time** label appears in the corner and the calendar advances.
+- **Screen:** the user taps **Start watching**. The bot lists the matches from mock merchants with prices
+  (the Aria Quiet 700 at $229, $225 and $239, and possibly one pricier model). A **simulated time** label appears in the corner and the calendar advances.
   The bot sends short updates:
-  > Nov 18: lowest is $219 at Merchant B. Still above your limit.
-  > Nov 24: $209 at Merchant A.
+  > Nov 18: lowest is $219 at Northline. Still above your limit of $200.
+  > Nov 24: lowest is $209 at Harbor Audio. Still above your limit of $200.
 - **VO:** "It checks merchants every few hours and only speaks up when something changes. We've sped up time for the demo."
 - **Point to land:** the agent is patient and quiet, not noisy.
 
 ### 4. The ask (1:05–1:35)
 
 - **Screen:** Black Friday. The bot:
-  > **$189 at Merchant A** (lowest in 30 days), inside your $200 limit.
+  > **$189 at Harbor Audio** (the lowest so far), inside your $200 limit.
   > Arrives Dec 2.
   >
   > [Buy now with PayPal] [Not yet]
@@ -70,7 +70,7 @@ Times are approximate. "VO" is the voiceover. Bot messages are written as they s
 ### 5. The agent acts on its own (1:35–2:05)
 
 - **Screen:** the simulated clock runs to night. The phone goes dark, then lights up with a notification.
-  > **Bought: headphones for Sam, $164** at Merchant C
+  > **Bought: headphones for Sam, $164** at Cedar Sound
   > You set: buy automatically under $170, by Dec 9.
   > Paid with your saved PayPal. Arrives Dec 4.
   >
@@ -92,7 +92,7 @@ Times are approximate. "VO" is the voiceover. Bot messages are written as they s
 
 - **Screen:** one diagram: Telegram → agent (AI request understanding, sourcing, price watching) →
   PayPal (checkout in chat, saved payment method for automatic buying). Then the title card and tagline.
-- **VO:** "Standing Order uses PayPal checkout when you approve a purchase, and a saved PayPal payment method when you've let the agent buy on its own.
+- **VO:** "Procureo uses PayPal checkout when you approve a purchase, and a saved PayPal payment method when you've let the agent buy on its own.
   Tell it what you need and what you'll pay. It waits, and buys within your limits."
 
 ## What the video requires
@@ -100,23 +100,24 @@ Times are approximate. "VO" is the voiceover. Bot messages are written as they s
 | Piece | Must be real | Can be mocked | Status |
 | --- | --- | --- | --- |
 | Telegram bot conversation | ✔ | | Started |
-| Text to standing order card, with an optional image | ✔ (LLM call) | | Planned |
-| Merchants, products and prices | | ✔ (mock catalog) | Planned |
-| Simulated clock and price changes | | ✔ (demo control, labeled on screen) | Planned |
-| Price watching and deciding when to ask or buy | ✔ | | Planned |
+| Text to standing order card, with an optional image | ✔ (LLM call) | | Built; **works with the real model** on text and links; a real product screenshot isn't tested yet |
+| Merchants, products and prices | | ✔ (mock catalog) | Built |
+| Simulated clock and price changes | | ✔ (`/ff`, deleted from the chat; add the label in editing) | Built |
+| Price watching and deciding when to ask or buy | ✔ | | Built |
 | "Buy now with PayPal" checkout | ✔ (PayPal sandbox) | | **Works** |
-| Saving PayPal for later (vault) | ✔ (PayPal sandbox) | | **Verified in sandbox** (script); not yet in the bot |
-| Paying with saved PayPal, no user present | ✔ (PayPal sandbox) | | **Verified in sandbox** (script); not yet in the bot |
-| "Why this one?" explanation | ✔ (from logged decision data) | | Planned |
-| `/orders` timeline | ✔ | | Planned |
-| Cancel an order (refund) | | Button may be shown only | Optional |
-| Shipping and arrival dates | | ✔ (from mock catalog) | Planned |
+| Saving PayPal for later (vault) | ✔ (PayPal sandbox) | | Built; approval page tested only in `vault_check.py` |
+| Paying with saved PayPal, no user present | ✔ (PayPal sandbox) | | Built; **verified in sandbox** |
+| "Why this one?" explanation | ✔ (from logged decision data) | | Built |
+| `/orders` timeline | ✔ | | Built |
+| Cancel an order (refund) | ✔ (PayPal sandbox) | | Built; **verified in sandbox** |
+| Shipping and arrival dates | | ✔ (from mock catalog) | Built |
 
 ## Recording notes
 
 - Record Telegram Desktop in a phone-sized window, or a real phone, at the same size throughout.
-- The demo control for time and prices must not appear in the chat. Use a separate admin page or
-  hidden commands, and show only the "simulated time" label in the video.
+- Set `DEMO_HINTS=false` when recording. `/ff` skips to the next thing the agent has to say, and its message
+  is deleted right away, so it won't show in the video. `/reset` starts over for another take. Add the
+  "simulated time" label in editing.
 - Record shots 4 and 5 as two separate takes, so you can redo the PayPal approval without re-recording everything.
 - Write the voiceover first, then time each shot to it. The script above is about 240 words, or roughly
   1:45 of speech at a calm pace. That leaves about a minute of pauses for viewers to read the chat.

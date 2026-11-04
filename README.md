@@ -1,18 +1,21 @@
 # [PayPal AI Hackathon](https://paypalaihackathon.devpost.com/)
 
-**Standing Order** is a Telegram shopping agent. You describe what you need once, in text, optionally
+**Procureo** is a Telegram shopping agent. You describe what you need once, in text, optionally
 adding photos, videos or links, and set your limits. The agent finds the item, waits for the right price,
 and buys it through PayPal, never going past those limits.
 Background is in [docs/ideation.md](docs/ideation.md); the product pitch is in [docs/submission.md](docs/submission.md) and the demo video plan in [docs/storyboard.md](docs/storyboard.md).
 
 ## Status
 
-- [x] Telegram bot with `/buy <amount> <description>` that creates a PayPal sandbox order and sends a Pay button
-- [x] PayPal return page that captures the payment (once, even if reloaded) and confirms it in the chat
-- [ ] Text request, with optional photos, videos or links, to a structured request
-- [ ] Product sourcing
-- [ ] Mandates with spending limits, price watching and a simulated clock
-- [ ] Saved payment method (vault) for purchases the agent makes on its own (verified in the sandbox with `scripts/vault_check.py`; not yet in the bot)
+Built: describing a need in text with an optional photo, video frame or link; a standing order with a spending limit
+and deadline; matching against a mock catalog; price watching on a simulated clock; asking before buying with one-tap
+PayPal checkout; opt-in automatic buying with a saved PayPal; "Why this one?"; refunds; an `/orders` timeline.
+
+The stores, products and prices are simulated. Voice notes aren't supported.
+
+**Who can do what.** The model only proposes. It can draft a standing order or suggest automatic buying, but only a
+button tap can start watching, raise a limit or turn on automatic buying, and code re-checks the limits right before
+every payment. Text inside photos and web pages can't change any of this.
 
 ## PayPal accounts: which login goes where
 
@@ -56,7 +59,20 @@ Common problems:
 
    With `PUBLIC_BASE_URL=http://localhost:8000` the bot uses long polling, so no public URL is needed.
    Open the Pay link on the same machine so PayPal can redirect back to localhost.
-4. In Telegram, send `/buy 12.50 Coffee beans` to your bot, tap the button, and pay with the sandbox **personal** account.
+4. In Telegram, tell your bot what you need, for example: *Noise-cancelling over-ear headphones for Sam's birthday.
+   Needs to arrive by Dec 14. Under $200.* Tap **Start watching**, then send `/ff` to skip to the next price change.
+   Pay or save PayPal with the sandbox **personal** account.
+
+Demo commands: `/ff` skips to the next thing the agent has to say (`/ff 3d` for at most 3 days), `/reset` starts this
+chat over, and `/buy 12.50 Coffee beans` tests checkout alone. Each chat has its own simulated clock, starting Nov 16, 2026.
+Values in `.env` take priority over variables exported in your shell.
+
+To run the whole storyboard without Telegram, against the real model and PayPal sandbox (it needs the saved PayPal
+from the check below, and `--scripted` skips the model):
+
+```bash
+uv run python scripts/demo_dry_run.py
+```
 
 ## Check saved PayPal (vault) in the sandbox
 
@@ -94,8 +110,12 @@ stay up through judging (Dec 1–15).
 
 | File | Role |
 | --- | --- |
-| `src/intent_agent/paypal.py` | PayPal REST client (OAuth token, create, capture and get order) |
+| `src/intent_agent/agent.py` | The standing order conversation and purchase flow |
+| `src/intent_agent/watcher.py` | Pure rules: when to update, ask, buy automatically or stop |
+| `src/intent_agent/brain.py` | OpenAI: understanding messages and attachments, matching products |
+| `src/intent_agent/catalog.py` | Mock stores, products and scripted prices |
+| `src/intent_agent/paypal.py` | PayPal REST client (orders, saved PayPal, refunds) |
 | `src/intent_agent/checkout.py` | Checkout flow: start an order for a chat, capture it on return, notify |
-| `src/intent_agent/store.py` | SQLite storage for orders |
+| `src/intent_agent/store.py` | SQLite storage for orders, standing orders and timelines |
 | `src/intent_agent/bot.py` | Telegram command handlers |
 | `src/intent_agent/web.py` | FastAPI app: Telegram webhook or polling, PayPal return and cancel pages |

@@ -11,7 +11,10 @@ from aiogram.types import Update
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
-from .bot import router
+from .agent import Agent, Button
+from .bot import keyboard, router
+from .brain import OpenAIBrain
+from .catalog import Catalog
 from .checkout import CaptureResult, Checkout
 from .config import Settings
 from .paypal import PayPalClient
@@ -22,14 +25,18 @@ log = logging.getLogger(__name__)
 WEBHOOK_PATH = "/telegram/webhook"
 
 
-def create_app(settings: Settings | None = None, *, checkout: Checkout | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None, *, checkout: Checkout | None = None, agent: Agent | None = None
+) -> FastAPI:
     """Build the app. Passing `checkout` skips Telegram and PayPal setup (used by tests)."""
     settings = settings or Settings()
+    pending_updates: set[asyncio.Task] = set()
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if checkout is not None:
             app.state.checkout = checkout
+            app.state.agent = agent
             app.state.bot_username = None
             yield
             return
@@ -41,12 +48,27 @@ def create_app(settings: Settings | None = None, *, checkout: Checkout | None = 
         async def notify(chat_id: int, text: str) -> None:
             await bot.send_message(chat_id, text)
 
+        async def send(chat_id: int, text: str, buttons: list[Button] | None) -> None:
+            await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=keyboard(buttons))
+
         app.state.checkout = Checkout(paypal, store, notify, settings.public_base_url, settings.currency)
+        app.state.agent = Agent(
+            store=store,
+            paypal=paypal,
+            brain=OpenAIBrain(settings.openai_api_key, settings.openai_model),
+            catalog=Catalog(),
+            checkout=app.state.checkout,
+            send=send,
+            public_base_url=settings.public_base_url,
+            currency=settings.currency,
+            demo_hints=settings.demo_hints,
+        )
         app.state.bot_username = (await bot.get_me()).username
 
         dp = Dispatcher()
         dp.include_router(router)
         dp["checkout"] = app.state.checkout
+        dp["agent"] = app.state.agent
         app.state.bot, app.state.dp = bot, dp
 
         polling = None
@@ -86,7 +108,10 @@ def create_app(settings: Settings | None = None, *, checkout: Checkout | None = 
         if settings.telegram_webhook_secret and x_telegram_bot_api_secret_token != settings.telegram_webhook_secret:
             raise HTTPException(status_code=403)
         update = Update.model_validate(await request.json(), context={"bot": request.app.state.bot})
-        await request.app.state.dp.feed_update(request.app.state.bot, update)
+        # Reply right away: model calls can outlast the time Telegram waits before sending an update again.
+        task = asyncio.create_task(request.app.state.dp.feed_update(request.app.state.bot, update))
+        pending_updates.add(task)
+        task.add_done_callback(pending_updates.discard)
         return {"ok": True}
 
     # PayPal appends ?token=<order id>&PayerID=... when redirecting the buyer back.
@@ -107,6 +132,21 @@ def create_app(settings: Settings | None = None, *, checkout: Checkout | None = 
     async def paypal_cancel(request: Request, token: str = "") -> HTMLResponse:
         await request.app.state.checkout.cancel(token)
         return _page("Checkout cancelled", "No payment was taken.", request.app.state.bot_username)
+
+    # After saving PayPal, the buyer returns with ?approval_token_id=<setup token id>.
+    @app.get("/paypal/vault/return", response_class=HTMLResponse)
+    async def vault_return(request: Request, approval_token_id: str = "") -> HTMLResponse:
+        saved = await request.app.state.agent.on_paypal_saved(approval_token_id)
+        title, body = (
+            ("PayPal saved", "Automatic buying is on, within the limit you set.")
+            if saved
+            else ("PayPal not saved", "This link was already used or has expired. Automatic buying was not changed.")
+        )
+        return _page(title, body, request.app.state.bot_username)
+
+    @app.get("/paypal/vault/cancel", response_class=HTMLResponse)
+    async def vault_cancel(request: Request) -> HTMLResponse:
+        return _page("PayPal not saved", "Automatic buying was not turned on.", request.app.state.bot_username)
 
     return app
 

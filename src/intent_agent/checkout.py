@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from enum import Enum
 
-from .paypal import PayPalClient, PayPalError
+from .paypal import PayPalClient, PayPalError, capture_id_of
 from .store import Order, Store
 
 log = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ log = logging.getLogger(__name__)
 MAX_AMOUNT = Decimal("1000.00")
 
 Notify = Callable[[int, str], Awaitable[None]]
+OnPaid = Callable[[Order, str | None], Awaitable[None]]  # order, capture id
 
 
 class CaptureResult(Enum):
@@ -41,8 +42,11 @@ class Checkout:
     notify: Notify
     public_base_url: str
     currency: str = "USD"
+    on_paid: OnPaid | None = None  # called instead of `notify` for standing-order purchases
 
-    async def start(self, chat_id: int, amount: Decimal, description: str) -> str:
+    async def start(
+        self, chat_id: int, amount: Decimal, description: str, standing_order_id: str | None = None
+    ) -> str:
         """Create an order and return the PayPal approval URL to send to the buyer."""
         base = self.public_base_url.rstrip("/")
         created = await self.paypal.create_order(
@@ -61,6 +65,7 @@ class Checkout:
                 amount=amount,
                 currency=self.currency,
                 status="CREATED",
+                standing_order_id=standing_order_id,
             )
         )
         return created.approve_url
@@ -74,9 +79,11 @@ class Checkout:
         if not self.store.transition(order_id, "CREATED", "CAPTURING"):
             return CaptureResult.ALREADY_DONE
 
+        capture_id = None
         try:
             result = await self.paypal.capture_order(order_id)
             status = result.get("status")
+            capture_id = capture_id_of(result)
         except PayPalError as e:
             if _issue(e) == "ORDER_ALREADY_CAPTURED":
                 status = "COMPLETED"
@@ -86,6 +93,9 @@ class Checkout:
 
         if status == "COMPLETED":
             self.store.transition(order_id, "CAPTURING", "COMPLETED")
+            if order.standing_order_id and self.on_paid:
+                await self.on_paid(order, capture_id)
+                return CaptureResult.COMPLETED
             await self.notify(
                 order.chat_id,
                 f"✅ Paid {order.amount} {order.currency} for “{order.description}”.\n"

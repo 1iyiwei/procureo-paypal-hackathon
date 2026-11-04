@@ -31,3 +31,8 @@ Sandbox: no; going live: use a separate Business account for the startup.
 For the hackathon, you don’t need another real account. Your one real PayPal account is only your login to the developer dashboard. The sandbox business and personal accounts are fake test accounts that live inside that dashboard; they hold no real money and aren’t linked to your real account in any way. The hackathon only asks for sandbox use, so your setup is complete.
 
 Separating them only matters if you go live. Live API credentials have to come from a PayPal Business account, which receives real payments. You could convert your personal account into one, but a separate business account, registered to your startup rather than to you, is the cleaner choice. It keeps company money and taxes apart from your own, and when you add co-founders or staff to that account later, they never touch your personal finances.
+
+## [Random string generator Linux](https://share.google/aimode/kxASma9ESwijvCXYq)
+```
+cat /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | head -c 32; echo
+```

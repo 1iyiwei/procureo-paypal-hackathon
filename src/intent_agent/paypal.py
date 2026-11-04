@@ -67,12 +67,12 @@ class PayPalClient:
         self._token_expires_at = time.monotonic() + float(body.get("expires_in", 0))
         return self._token
 
-    async def _request(self, method: str, path: str, json: dict | None = None) -> dict:
+    async def _request(self, method: str, path: str, json: dict | None = None, request_id: str | None = None) -> dict:
         token = await self._access_token()
         headers = {
             "Authorization": f"Bearer {token}",
             # Makes retries safe: PayPal returns the original result for a repeated request id.
-            "PayPal-Request-Id": str(uuid.uuid4()),
+            "PayPal-Request-Id": request_id or str(uuid.uuid4()),
         }
         resp = await self._http.request(method, path, json=json, headers=headers)
         body = _json(resp)
@@ -121,6 +121,9 @@ class PayPalClient:
 
     async def get_order(self, order_id: str) -> dict:
         return await self._request("GET", f"/v2/checkout/orders/{order_id}")
+
+    async def refund_capture(self, capture_id: str) -> dict:
+        return await self._request("POST", f"/v2/payments/captures/{capture_id}/refund", json={})
 
     # --- Saved PayPal (vault): buyer approves once, the agent can pay later without them ---
 
@@ -177,8 +180,12 @@ class PayPalClient:
         currency: str,
         description: str,
         reference_id: str | None = None,
+        request_id: str | None = None,
     ) -> dict:
-        """Pay with a saved PayPal method, with no buyer present. Returns the final order."""
+        """Pay with a saved PayPal method, with no buyer present. Returns the final order.
+
+        Pass a `request_id` unique to the purchase: PayPal then treats a retry as the same payment.
+        """
         payload = {
             "intent": "CAPTURE",
             "purchase_units": [
@@ -190,11 +197,19 @@ class PayPalClient:
             ],
             "payment_source": {"paypal": {"vault_id": payment_token_id}},
         }
-        order = await self._request("POST", "/v2/checkout/orders", json=payload)
+        order = await self._request("POST", "/v2/checkout/orders", json=payload, request_id=request_id)
         # PayPal's docs show vaulted orders coming back COMPLETED; capture explicitly if not.
         if order.get("status") == "APPROVED":
             order = await self.capture_order(order["id"])
         return order
+
+
+def capture_id_of(order: dict) -> str | None:
+    """The capture id in a completed order, needed for refunds."""
+    for unit in order.get("purchase_units", []):
+        for capture in (unit.get("payments") or {}).get("captures", []):
+            return capture.get("id")
+    return None
 
 
 def _json(resp: httpx.Response) -> dict:

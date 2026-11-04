@@ -72,7 +72,7 @@ async def save_paypal(paypal: PayPalClient) -> str:
         setup = await paypal.create_setup_token(
             return_url=f"{base}/vault/return",
             cancel_url=f"{base}/vault/cancel",
-            description="Standing Order: let the agent buy within your limits",
+            description="Procureo: let the agent buy within your limits",
         )
     except PayPalError as e:
         fail("create setup token (is Vault enabled for this sandbox app?)", e)
@@ -106,7 +106,7 @@ async def pay(paypal: PayPalClient, payment_token_id: str, amount: Decimal, curr
             payment_token_id=payment_token_id,
             amount=amount,
             currency=currency,
-            description="Standing Order vault check",
+            description="Procureo vault check",
         )
     except PayPalError as e:
         fail("pay with saved PayPal", e)

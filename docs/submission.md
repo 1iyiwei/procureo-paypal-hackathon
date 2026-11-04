@@ -5,6 +5,11 @@ Anything marked *(planned)* is not built yet; update or remove it before submitt
 
 ## Project name
 
+**Procureo**
+
+A deliberate blend of "Procure" and the active suffix "-eo" (evoking movement, like video or stereo). It explicitly hints at the agent's background job—sourcing and optimizing—while establishing a unique brand mark.
+
+<!--
 **Standing Order**
 
 A standing order is an instruction you give your bank once, which it then carries out on your behalf.
@@ -13,6 +18,7 @@ The agent stands by until the conditions are met.
 
 Alternatives considered: *Allowance* (bounded spending, but sounds like pocket money),
 *Errand* (clear, but generic), *Mandate* (accurate, but cold).
+-->
 
 ## Elevator pitch
 (Devpost limit: 200 characters.)
@@ -38,8 +44,8 @@ Only if you set the limits and can see and stop everything it does.
 ### What it does
 
 1. **You describe the need, in your own words.** Text is enough: "noise-cancelling over-ear headphones
-   for my friend's birthday, delivered by Dec 14, under $200." You can add a photo, a video, a product link,
-   or a voice note when words aren't enough. These are optional, and the agent uses them to refine the request.
+   for my friend's birthday, delivered by Dec 14, under $200." You can add a photo, a video or a product link
+   when words aren't enough. These are optional, and the agent uses them to refine the request.
 2. **The agent turns it into a standing order.** This is a structured request plus your limits:
    the most to spend and the latest date to buy. You review it once.
 3. **It sources and waits.** It searches merchants, tracks prices over time, and tells you what it's seeing.
@@ -49,14 +55,14 @@ Only if you set the limits and can see and stop everything it does.
 
 It's built for individual shoppers buying for themselves.
 
-*(Status: only the one-tap PayPal checkout in step 4 works today; the rest is planned.)*
+*(Status: all of this is built. Stores, products and prices are simulated, payments run in the PayPal sandbox, and a video is read from one preview frame. Check the understanding step against the real model before submitting.)*
 
 ### How we built it
 
 - **Interface:** a Telegram bot. Chat handles text and all the media types natively, and, crucially, it can
   reach you later. An agent that waits needs a way to say "the price dropped, buying now."
-- **Payments:** PayPal Orders API v2 (sandbox) for checkout in the chat; PayPal vault (saved payment methods) for purchases the agent makes on its own *(planned)*.
-- **AI:** a multimodal model turns the text and attachments into a structured request *(planned)*.
+- **Payments:** PayPal Orders API v2 (sandbox) for checkout in the chat; PayPal vault (saved payment methods) for purchases the agent makes on its own, and refunds.
+- **AI:** an OpenAI model turns the text and attachments into a structured request and matches it to products. It only proposes: only a button tap can raise a limit or allow automatic buying, and code re-checks the limits right before every payment.
 - **Backend:** Python, FastAPI, aiogram, and SQLite, deployed on Render.
 
 ### Challenges we ran into
@@ -79,7 +85,7 @@ saved payment method only works with the merchant that saved it.)*
 
 ## Built with
 
-python, fastapi, aiogram, telegram, paypal, sqlite, render
+python, fastapi, aiogram, telegram, paypal, openai, sqlite, render
 
 ## Try it out
 

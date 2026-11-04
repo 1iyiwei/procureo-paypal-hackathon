@@ -1,6 +1,6 @@
 # Ideation
 
-with Gemini [here](https://share.google/aimode/AFMHhxBUAKUCwiBSQ).
+with Gemini [here](https://share.google/aimode/QJyjcFDOe2Y5wquYf).
 
 The PayPal AI Hackathon ("Build What's Next with PayPal and AI") is a global online hackathon inviting developers, designers, founders, and students to build new applications combining PayPal and artificial intelligence. [1] (https://developer.paypal.com/community/blog/PayPal_AI_Hackathon/), [2] (https://paypalaihackathon.devpost.com/)
 
