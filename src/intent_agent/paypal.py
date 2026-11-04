@@ -21,6 +21,19 @@ class CreatedOrder:
     approve_url: str
 
 
+@dataclass(frozen=True)
+class CreatedSetupToken:
+    setup_token_id: str
+    approve_url: str
+
+
+@dataclass(frozen=True)
+class SavedPayPal:
+    payment_token_id: str  # pass as vault_id when paying later
+    customer_id: str
+    email: str
+
+
 class PayPalClient:
     def __init__(
         self,
@@ -98,10 +111,7 @@ class PayPalClient:
             },
         }
         body = await self._request("POST", "/v2/checkout/orders", json=payload)
-        approve_url = next(
-            (link["href"] for link in body.get("links", []) if link["rel"] in ("payer-action", "approve")),
-            None,
-        )
+        approve_url = _link(body, "payer-action", "approve")
         if not approve_url:
             raise PayPalError("PayPal order has no approval link", body=body)
         return CreatedOrder(order_id=body["id"], approve_url=approve_url)
@@ -112,9 +122,89 @@ class PayPalClient:
     async def get_order(self, order_id: str) -> dict:
         return await self._request("GET", f"/v2/checkout/orders/{order_id}")
 
+    # --- Saved PayPal (vault): buyer approves once, the agent can pay later without them ---
+
+    async def create_setup_token(self, *, return_url: str, cancel_url: str, description: str) -> CreatedSetupToken:
+        # After approval PayPal redirects to return_url with ?approval_token_id=<setup token id>
+        # (observed in sandbox, 2026-11-03), which identifies the setup token to turn into a payment token.
+        payload = {
+            "payment_source": {
+                "paypal": {
+                    "description": description[:127],
+                    "permit_multiple_payment_tokens": False,
+                    "usage_type": "MERCHANT",
+                    "customer_type": "CONSUMER",
+                    "usage_pattern": "IMMEDIATE",
+                    "experience_context": {
+                        "shipping_preference": "NO_SHIPPING",
+                        "payment_method_preference": "IMMEDIATE_PAYMENT_REQUIRED",
+                        "return_url": return_url,
+                        "cancel_url": cancel_url,
+                    },
+                }
+            }
+        }
+        body = await self._request("POST", "/v3/vault/setup-tokens", json=payload)
+        approve_url = _link(body, "approve")
+        if not approve_url:
+            raise PayPalError("PayPal setup token has no approval link", body=body)
+        return CreatedSetupToken(setup_token_id=body["id"], approve_url=approve_url)
+
+    async def get_setup_token(self, setup_token_id: str) -> dict:
+        return await self._request("GET", f"/v3/vault/setup-tokens/{setup_token_id}")
+
+    async def create_payment_token(self, setup_token_id: str) -> SavedPayPal:
+        """Turn an approved setup token into a saved payment method."""
+        body = await self._request(
+            "POST",
+            "/v3/vault/payment-tokens",
+            json={"payment_source": {"token": {"id": setup_token_id, "type": "SETUP_TOKEN"}}},
+        )
+        return SavedPayPal(
+            payment_token_id=body["id"],
+            customer_id=(body.get("customer") or {}).get("id", ""),
+            email=((body.get("payment_source") or {}).get("paypal") or {}).get("email_address", ""),
+        )
+
+    async def delete_payment_token(self, payment_token_id: str) -> None:
+        await self._request("DELETE", f"/v3/vault/payment-tokens/{payment_token_id}")
+
+    async def charge_saved(
+        self,
+        *,
+        payment_token_id: str,
+        amount: Decimal,
+        currency: str,
+        description: str,
+        reference_id: str | None = None,
+    ) -> dict:
+        """Pay with a saved PayPal method, with no buyer present. Returns the final order."""
+        payload = {
+            "intent": "CAPTURE",
+            "purchase_units": [
+                {
+                    "reference_id": reference_id or "default",
+                    "description": description[:127],
+                    "amount": {"currency_code": currency, "value": f"{amount:.2f}"},
+                }
+            ],
+            "payment_source": {"paypal": {"vault_id": payment_token_id}},
+        }
+        order = await self._request("POST", "/v2/checkout/orders", json=payload)
+        # PayPal's docs show vaulted orders coming back COMPLETED; capture explicitly if not.
+        if order.get("status") == "APPROVED":
+            order = await self.capture_order(order["id"])
+        return order
+
 
 def _json(resp: httpx.Response) -> dict:
+    if not resp.content:  # e.g. 204 from DELETE
+        return {}
     try:
         return resp.json()
     except ValueError:
         return {"raw": resp.text}
+
+
+def _link(body: dict, *rels: str) -> str | None:
+    return next((link["href"] for link in body.get("links", []) if link.get("rel") in rels), None)

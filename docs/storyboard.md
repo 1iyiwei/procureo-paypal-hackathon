@@ -105,8 +105,8 @@ Times are approximate. "VO" is the voiceover. Bot messages are written as they s
 | Simulated clock and price changes | | ✔ (demo control, labeled on screen) | Planned |
 | Price watching and deciding when to ask or buy | ✔ | | Planned |
 | "Buy now with PayPal" checkout | ✔ (PayPal sandbox) | | **Works** |
-| Saving PayPal for later (vault) | ✔ (PayPal sandbox) | | Planned; **test first** |
-| Paying with saved PayPal, no user present | ✔ (PayPal sandbox) | | Planned |
+| Saving PayPal for later (vault) | ✔ (PayPal sandbox) | | **Verified in sandbox** (script); not yet in the bot |
+| Paying with saved PayPal, no user present | ✔ (PayPal sandbox) | | **Verified in sandbox** (script); not yet in the bot |
 | "Why this one?" explanation | ✔ (from logged decision data) | | Planned |
 | `/orders` timeline | ✔ | | Planned |
 | Cancel an order (refund) | | Button may be shown only | Optional |

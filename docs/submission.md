@@ -87,6 +87,15 @@ python, fastapi, aiogram, telegram, paypal, sqlite, render
 - Source code: *(GitHub link)*
 - Demo video (under 3 minutes): *(YouTube link; plan in [storyboard.md](storyboard.md))*
 
+**Testing instructions for judges.** Payments run in the PayPal sandbox. When the bot opens a sandbox.paypal.com
+page, log in with this test buyer account, not a real PayPal account: *(sandbox personal account email and password)*.
+If the page skips the login and says the account belongs to the merchant, log out on sandbox.paypal.com or use a
+new private window.
+
+*(Before submitting: create a separate sandbox personal account just for judges, so their purchases stay apart from
+your own test data. Give its login only in the submission form, or in a private note to judges if the form has a
+field for one, never in the public repo.)*
+
 ---
 
 ## Product decisions (internal; not part of the submission)
