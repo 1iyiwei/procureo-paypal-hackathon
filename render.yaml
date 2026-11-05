@@ -2,18 +2,21 @@ services:
   - type: web
     name: procureo
     runtime: python
-    # Free instances sleep when idle, which breaks price monitoring; use a paid plan for the demo.
-    plan: starter
+    # Free is for testing only: it sleeps after 15 idle minutes, which stops price checks, and it can't have a disk, so
+    # every order and saved PayPal is lost when it does. For judging, use starter and uncomment the two marked sections.
+    plan: free
     buildCommand: pip install uv && uv sync --frozen --no-dev
-    startCommand: uv run --no-dev intent-agent
+    # Run the installed script directly: `uv sync` can remove the uv that pip put in the same environment.
+    startCommand: .venv/bin/intent-agent
     healthCheckPath: /healthz
     envVars:
       - key: PYTHON_VERSION
         value: "3.13.14"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      # Letters, digits, _ and - only, as Telegram requires. Render's generated values may not qualify.
       - key: TELEGRAM_WEBHOOK_SECRET
-        generateValue: true
+        sync: false
       - key: PAYPAL_CLIENT_ID
         sync: false
       - key: PAYPAL_CLIENT_SECRET
@@ -26,9 +29,11 @@ services:
         sync: false
       - key: OPENAI_MODEL
         value: gpt-6.1-terra
-      - key: DATABASE_PATH
-        value: /var/data/app.db
-    disk:
-      name: data
-      mountPath: /var/data
-      sizeGB: 1
+      # Paid plan only:
+      # - key: DATABASE_PATH
+      #   value: /var/data/app.db
+    # Paid plan only:
+    # disk:
+    #   name: data
+    #   mountPath: /var/data
+    #   sizeGB: 1

@@ -4,6 +4,7 @@ import asyncio
 import contextlib
 import html
 import logging
+from collections import deque
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
@@ -33,6 +34,7 @@ def create_app(
     """Build the app. Passing `checkout` skips Telegram and PayPal setup (used by tests)."""
     settings = settings or Settings()
     pending_updates: set[asyncio.Task] = set()
+    recent_updates: deque[int] = deque(maxlen=1000)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -93,7 +95,8 @@ def create_app(
             await bot.set_webhook(
                 settings.public_base_url.rstrip("/") + WEBHOOK_PATH,
                 secret_token=settings.telegram_webhook_secret or None,
-                drop_pending_updates=True,
+                # A sleeping service wakes because of a message, so what's pending must not be dropped.
+                drop_pending_updates=False,
             )
             log.info("Telegram webhook mode")
         else:
@@ -130,6 +133,10 @@ def create_app(
         if settings.telegram_webhook_secret and x_telegram_bot_api_secret_token != settings.telegram_webhook_secret:
             raise HTTPException(status_code=403)
         update = Update.model_validate(await request.json(), context={"bot": request.app.state.bot})
+        # Telegram resends an update if a slow start outlasts its wait, and the first copy may still arrive.
+        if update.update_id in recent_updates:
+            return {"ok": True}
+        recent_updates.append(update.update_id)
         # Reply right away: model calls can outlast the time Telegram waits before sending an update again.
         task = asyncio.create_task(request.app.state.dp.feed_update(request.app.state.bot, update))
         pending_updates.add(task)

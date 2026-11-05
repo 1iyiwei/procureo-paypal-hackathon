@@ -146,10 +146,17 @@ PayPal and Telegram are mocked, so tests need no credentials.
 
 ## Deploy on Render
 
-[render.yaml](render.yaml) defines one web service with a small disk for SQLite. In the Render dashboard, choose
-**New → Blueprint**, select this repo, and fill in the secrets it asks for. The bot then uses the service's https URL
-and switches to webhook mode by itself. Use a paid instance: free instances sleep when idle, and the demo must stay up
-through judging (Dec 1–15).
+[render.yaml](render.yaml) defines one web service. In the Render dashboard, choose **New → Blueprint**, select this
+repo, and fill in the secrets it asks for. The bot then uses the service's https URL and switches to webhook mode by
+itself. Stop any local copy that uses the same bot token first.
+
+| | Free (as configured, for testing) | Starter with a disk (for judging) |
+| --- | --- | --- |
+| Idle | Sleeps after 15 minutes; the next message takes about a minute to wake it | Always on |
+| Data | Lost on every sleep, restart or deploy: orders, the access list and saved PayPal | Kept on the disk |
+| `/live` background checks | Stop while asleep | Run on schedule |
+
+To switch, set `plan: starter` in `render.yaml` and uncomment the two sections marked "Paid plan only".
 
 **Access code.** While `ACCESS_CODE` is set, a chat must send that code once before the bot does anything for it, so
 strangers can't use up model credit. The link `https://t.me/<bot>?start=<code>` does this in one tap. Give the code
