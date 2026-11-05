@@ -3,13 +3,16 @@
 **Procureo** is a Telegram shopping agent. You describe what you need once, in text, optionally
 adding photos, videos or links, and set your limits. The agent finds the item, waits for the right price,
 and buys it through PayPal, never going past those limits.
+Try it at [@ProcureoBot](https://t.me/ProcureoBot), hosted on Render. During judging it needs an access code, which judges
+get in the submission form. The demo video is on [YouTube](https://www.youtube.com/watch?v=okvoU8dGuVY).
 Background is in [docs/ideation.md](docs/ideation.md); the product pitch is in [docs/submission.md](docs/submission.md) and the demo video plan in [docs/storyboard.md](docs/storyboard.md).
 
 ## Status
 
 Built: describing a need in text with an optional photo, video frame or link; a standing order with a spending limit
-and deadline; matching against a mock catalog; price watching on a simulated clock; asking before buying with one-tap
-PayPal checkout; opt-in automatic buying with a saved PayPal; "Why this one?"; refunds; an `/orders` timeline.
+and deadline; matching against a mock catalog or, in live mode, real products from Channel3; price watching; asking
+before buying with one-tap PayPal checkout; opt-in automatic buying with a saved PayPal; "Why this one?"; refunds; an
+`/orders` timeline; an access code; deployment on Render.
 
 By default the stores, products and prices are simulated, so the demo runs the same way every time. `/live` switches a
 chat to real products and prices (see [Live mode](#live-mode-real-products-and-prices)). Payments are always in the
@@ -19,7 +22,7 @@ PayPal sandbox. Voice notes aren't supported.
 button tap can start watching, raise a limit or turn on automatic buying, and code re-checks the limits right before
 every payment. Text inside photos and web pages can't change any of this.
 
-## How it uses PayPal and AI
+## How it uses PayPal, AI and sponsor tools
 
 **PayPal, in the sandbox:**
 
@@ -33,6 +36,10 @@ every payment. Text inside photos and web pages can't change any of this.
 **AI:** OpenAI GPT-6.1 Terra, through the Responses API with structured outputs, turns messages, photos and video frames
 into a standing order and matches requests to products. OpenAI's hosted web search tool reads product links, so this
 server never fetches a URL a user sent. Claude Code was used to build the project; it isn't part of the running product.
+
+**Channel3:** in live mode, search finds real products, and product lookups check their current prices in the background.
+
+**Render:** hosts the bot as one web service, which receives Telegram's webhook and PayPal's return pages.
 
 ## PayPal accounts: which login goes where
 
@@ -149,6 +156,18 @@ PayPal and Telegram are mocked, so tests need no credentials.
 [render.yaml](render.yaml) defines one web service. In the Render dashboard, choose **New → Blueprint**, select this
 repo, and fill in the secrets it asks for. The bot then uses the service's https URL and switches to webhook mode by
 itself. Stop any local copy that uses the same bot token first.
+
+If you create a plain Web Service by hand instead, set the health check path to `/healthz`, add the same variables, and use:
+
+```bash
+pip install uv && uv sync --frozen --no-dev
+```
+
+as the build command, and this as the start command:
+
+```bash
+.venv/bin/intent-agent
+```
 
 | | Free (as configured, for testing) | Starter with a disk (for judging) |
 | --- | --- | --- |

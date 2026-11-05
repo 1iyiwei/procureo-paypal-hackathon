@@ -1,5 +1,7 @@
 # Demo video storyboard
 
+**Recorded:** the [final video](https://www.youtube.com/watch?v=okvoU8dGuVY) is on YouTube. It shows the scripted demo, so `/live` mode, added later, isn't in it.
+
 Target length 2:50 (the limit is 3:00). One user, one standing order: headphones for a friend's birthday,
 delivered by Dec 14, under $200. See [submission.md](submission.md) for the product decisions behind it.
 
@@ -99,13 +101,13 @@ Times are approximate. "VO" is the voiceover. Bot messages are written as they s
 
 | Piece | Must be real | Can be mocked | Status |
 | --- | --- | --- | --- |
-| Telegram bot conversation | ✔ | | Started |
+| Telegram bot conversation | ✔ | | **Works** |
 | Text to standing order card, with an optional image | ✔ (LLM call) | | Built; **works with the real model**, including a real product screenshot in Telegram |
 | Merchants, products and prices | | ✔ (mock catalog) | Built |
 | Simulated clock and price changes | | ✔ (`/ff`, deleted from the chat; add the label in editing) | Built |
 | Price watching and deciding when to ask or buy | ✔ | | Built |
 | "Buy now with PayPal" checkout | ✔ (PayPal sandbox) | | **Works** |
-| Saving PayPal for later (vault) | ✔ (PayPal sandbox) | | Built; approval page tested only in `vault_check.py` |
+| Saving PayPal for later (vault) | ✔ (PayPal sandbox) | | **Works** in Telegram |
 | Paying with saved PayPal, no user present | ✔ (PayPal sandbox) | | Built; **verified in sandbox** |
 | "Why this one?" explanation | ✔ (from logged decision data) | | Built |
 | `/orders` timeline | ✔ | | Built |
