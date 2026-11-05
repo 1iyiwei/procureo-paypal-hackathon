@@ -100,7 +100,7 @@ Times are approximate. "VO" is the voiceover. Bot messages are written as they s
 | Piece | Must be real | Can be mocked | Status |
 | --- | --- | --- | --- |
 | Telegram bot conversation | ✔ | | Started |
-| Text to standing order card, with an optional image | ✔ (LLM call) | | Built; **works with the real model** on text and links; a real product screenshot isn't tested yet |
+| Text to standing order card, with an optional image | ✔ (LLM call) | | Built; **works with the real model**, including a real product screenshot in Telegram |
 | Merchants, products and prices | | ✔ (mock catalog) | Built |
 | Simulated clock and price changes | | ✔ (`/ff`, deleted from the chat; add the label in editing) | Built |
 | Price watching and deciding when to ask or buy | ✔ | | Built |

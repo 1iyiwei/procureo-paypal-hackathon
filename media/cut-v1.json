@@ -1,0 +1,8 @@
+{
+ "sources": {"R": "recording_v1.mp4"},
+ "size": [1432, 1474], "fps": 30, "background": "0x0f1115",
+ "segments": [
+  {"src": "R", "in": 0.0, "out": 220.0, "speed": 1.28, "note": "first part"},
+  {"src": "R", "in": 240.0, "out": 250.0, "speed": 1.28, "note": "second part"}
+ ]
+}

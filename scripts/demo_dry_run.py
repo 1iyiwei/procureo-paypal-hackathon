@@ -134,6 +134,10 @@ async def main() -> None:
                 return
 
             print("\n\n--- other inputs ---")
+            # Summary shape from a real screenshot: details from a picture mustn't rule out every product.
+            likeness = "Noise-cancelling over-ear headphones, ideally wireless Bluetooth in dark blue with a transparency mode."
+            assert "aria-700" in await agent.brain.source(likeness, Catalog().describe())
+            assert await agent.brain.source("Over-ear headphones, must be made by Sony.", Catalog().describe()) == []
             await user("Find me a backpack like this for hiking under $100 https://example.com")
             await user("Actually make that under $90 please")
             await user("What's the weather like?")

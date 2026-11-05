@@ -224,8 +224,8 @@ class Agent:
         if not ids:
             return await self.send(
                 order.chat_id,
-                "I couldn't find a match in the demo stores. They carry headphones, earbuds, e-readers, espresso "
-                "machines, backpacks, wool throws and GPS watches. Tell me what to change.",
+                f"I couldn't find a match in the demo stores for: {esc(order.summary)}\n\nThey carry headphones, earbuds, "
+                "e-readers, espresso machines, backpacks, wool throws and GPS watches. Tell me what to change.",
                 None,
             )
         order.product_ids, order.status = ids, "WATCHING"
