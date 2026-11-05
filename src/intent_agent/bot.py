@@ -35,7 +35,7 @@ DEMO_HELP = (
 )
 
 # Buttons that should stop working once tapped.
-ONE_TIME_ACTIONS = {"start", "notyet", "auto", "refund", "cancel"}
+ONE_TIME_ACTIONS = {"start", "watch", "notyet", "auto", "refund", "cancel"}
 
 
 class AccessGate(BaseMiddleware):
@@ -74,7 +74,8 @@ def keyboard(buttons: list[Button] | None) -> InlineKeyboardMarkup | None:
 @router.message(CommandStart())
 @router.message(Command("help"))
 async def on_start(message: Message, agent: Agent) -> None:
-    await message.answer(HELP + (DEMO_HELP if agent.demo_hints else ""), parse_mode="HTML")
+    live = "\n\n/live watches real products and prices, still paying with sandbox money." if agent.live_catalog else ""
+    await message.answer(HELP + live + (DEMO_HELP if agent.demo_hints else ""), parse_mode="HTML")
 
 
 @router.message(Command("buy"))
@@ -125,7 +126,17 @@ async def on_fast_forward(message: Message, command: CommandObject, agent: Agent
     except TelegramBadRequest:
         pass
     if not await agent.fast_forward(chat_id, parse_span(command.args)) and agent.demo_hints:
-        await message.answer(f"<i>Demo: nothing to report. It's now {day(agent.store.sim_now(chat_id))}.</i>", parse_mode="HTML")
+        await message.answer(f"<i>Demo: nothing to report. It's now {day(agent.now(chat_id))}.</i>", parse_mode="HTML")
+
+
+@router.message(Command("live"))
+async def on_live(message: Message, agent: Agent) -> None:
+    await agent.set_mode(message.chat.id, True)
+
+
+@router.message(Command("demo"))
+async def on_demo(message: Message, agent: Agent) -> None:
+    await agent.set_mode(message.chat.id, False)
 
 
 @router.message(Command("reset"))

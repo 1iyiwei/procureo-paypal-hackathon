@@ -11,7 +11,9 @@ Built: describing a need in text with an optional photo, video frame or link; a 
 and deadline; matching against a mock catalog; price watching on a simulated clock; asking before buying with one-tap
 PayPal checkout; opt-in automatic buying with a saved PayPal; "Why this one?"; refunds; an `/orders` timeline.
 
-The stores, products and prices are simulated. Voice notes aren't supported.
+By default the stores, products and prices are simulated, so the demo runs the same way every time. `/live` switches a
+chat to real products and prices (see [Live mode](#live-mode-real-products-and-prices)). Payments are always in the
+PayPal sandbox. Voice notes aren't supported.
 
 **Who can do what.** The model only proposes. It can draft a standing order or suggest automatic buying, but only a
 button tap can start watching, raise a limit or turn on automatic buying, and code re-checks the limits right before
@@ -78,7 +80,7 @@ Common problems:
    Needs to arrive by Dec 14. Under $200.* Tap **Start watching**, then send `/ff` to skip to the next price change.
    Pay or save PayPal with the sandbox **personal** account.
 
-Demo commands: `/ff` skips to the next thing the agent has to say (`/ff 3d` for at most 3 days), `/reset` starts this
+Demo commands: `/live` and `/demo` switch modes, `/ff` skips to the next thing the agent has to say (`/ff 3d` for at most 3 days), `/reset` starts this
 chat over, and `/buy 12.50 Coffee beans` tests checkout alone. Each chat has its own simulated clock, starting Nov 16, 2026.
 Values in `.env` take priority over variables exported in your shell.
 
@@ -88,6 +90,34 @@ from the check below, and `--scripted` skips the model):
 ```bash
 uv run python scripts/demo_dry_run.py
 ```
+
+## Live mode: real products and prices
+
+The scripted demo is the default, and `/live` switches a chat to real data from [Channel3](https://channel3.ai). Set
+`CHANNEL3_API_KEY` to enable it. To check the key and the matching without Telegram (nothing is bought):
+
+```bash
+uv run python scripts/live_check.py "Noise-cancelling over-ear headphones"
+```
+
+| | Demo | `/live` |
+| --- | --- | --- |
+| Products and prices | Scripted | Real, from Channel3 |
+| Clock | Simulated; `/ff` skips ahead | Real; a background job checks every `LIVE_CHECK_MINUTES` (default 180), and `/ff` checks now |
+| Arrival dates | Scripted | Estimated at 5 days, because Channel3 doesn't report shipping times |
+| Payment | PayPal sandbox | PayPal sandbox: fake money, and nothing ships. The bot calls it a test purchase and links to the store. |
+
+Real listings add safeguards the demo doesn't need:
+
+- The user confirms the exact products before any are watched, and only those can be bought.
+- Only new, in-stock offers in the account's currency count.
+- A price under half of where watching started gets a question instead of an automatic purchase, in case it's a data
+  error or a different item.
+- If a price check fails, the agent does nothing and tries again later. It also re-reads the order after each check, so
+  pausing or cancelling during a check still counts.
+
+Search costs one Channel3 credit (1,000 are free each month), and price checks are free. Store links from Channel3 are
+affiliate-tracked.
 
 ## Check saved PayPal (vault) in the sandbox
 
@@ -136,6 +166,7 @@ deployed bot stops receiving messages. Create a separate bot with @BotFather for
 | `src/intent_agent/watcher.py` | Pure rules: when to update, ask, buy automatically or stop |
 | `src/intent_agent/brain.py` | OpenAI: understanding messages and attachments, matching products |
 | `src/intent_agent/catalog.py` | Mock stores, products and scripted prices |
+| `src/intent_agent/live.py` | Real products and prices from Channel3, for live mode |
 | `src/intent_agent/paypal.py` | PayPal REST client (orders, saved PayPal, refunds) |
 | `src/intent_agent/checkout.py` | Checkout flow: start an order for a chat, capture it on return, notify |
 | `src/intent_agent/store.py` | SQLite storage for orders, standing orders and timelines |

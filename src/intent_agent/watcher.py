@@ -9,6 +9,8 @@ from .catalog import Quote
 
 # How long before "arrive by" the agent stops waiting and has to buy.
 BUY_MARGIN = timedelta(days=5)
+# A price this far below where it started may be a data error or a different item, so the agent asks instead of buying.
+SUSPICIOUS_PRICE_RATIO = Decimal("0.5")
 
 
 @dataclass
@@ -23,6 +25,8 @@ class StandingOrder:
     auto_limit: Decimal | None = None  # set only after the user taps to allow automatic buying
     pending_auto_limit: Decimal | None = None  # proposed, not yet confirmed by a tap
     product_ids: list[str] = field(default_factory=list)
+    candidate_ids: list[str] = field(default_factory=list)  # real products waiting for the user to confirm them
+    reference_price: Decimal | None = None  # lowest real price when watching started
     last_low: Decimal | None = None  # lowest price told to the user so far
     last_offer: Decimal | None = None  # lowest price already offered to the user
     last_call_sent: bool = False
@@ -82,14 +86,17 @@ def decide(order: StandingOrder, quotes: list[Quote], now: datetime) -> Decision
 
     options = eligible(order, quotes)
     best = options[0] if options else None
-    if best and may_auto_buy(order, best.price):
+    suspicious = bool(
+        best and order.reference_price and best.price < order.reference_price * SUSPICIOUS_PRICE_RATIO
+    )
+    if best and may_auto_buy(order, best.price) and not suspicious:
         return Decision(Action.AUTO_BUY, best)
     if order.buy_by and now.date() == order.buy_by and not order.last_call_sent:
         return Decision(Action.LAST_CALL, best)
     if best is None:
         return Decision(Action.NOTHING)
     is_new_offer = best.price <= order.max_price and (order.last_offer is None or best.price < order.last_offer)
-    if is_new_offer and not order.automatic:
+    if is_new_offer and (suspicious or not order.automatic):
         return Decision(Action.ASK, best)
     if order.last_low is None or best.price < order.last_low:
         return Decision(Action.UPDATE, best)

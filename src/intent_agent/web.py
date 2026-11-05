@@ -7,7 +7,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import Update
+from aiogram.types import LinkPreviewOptions, Update
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
@@ -17,12 +17,14 @@ from .brain import OpenAIBrain
 from .catalog import Catalog
 from .checkout import CaptureResult, Checkout
 from .config import Settings
+from .live import LiveCatalog
 from .paypal import PayPalClient
 from .store import Store
 
 log = logging.getLogger(__name__)
 
 WEBHOOK_PATH = "/telegram/webhook"
+NO_PREVIEW = LinkPreviewOptions(is_disabled=True)  # store links shouldn't expand into big previews
 
 
 def create_app(
@@ -49,8 +51,11 @@ def create_app(
             await bot.send_message(chat_id, text)
 
         async def send(chat_id: int, text: str, buttons: list[Button] | None) -> None:
-            await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=keyboard(buttons))
+            await bot.send_message(
+                chat_id, text, parse_mode="HTML", reply_markup=keyboard(buttons), link_preview_options=NO_PREVIEW
+            )
 
+        live_catalog = LiveCatalog(settings.channel3_api_key, settings.currency) if settings.channel3_api_key else None
         app.state.checkout = Checkout(paypal, store, notify, settings.public_base_url, settings.currency)
         app.state.agent = Agent(
             store=store,
@@ -62,6 +67,7 @@ def create_app(
             public_base_url=settings.public_base_url,
             currency=settings.currency,
             demo_hints=settings.demo_hints,
+            live_catalog=live_catalog,
         )
         app.state.bot_username = (await bot.get_me()).username
 
@@ -73,6 +79,15 @@ def create_app(
         dp["agent"] = app.state.agent
         app.state.bot, app.state.dp = bot, dp
 
+        async def watch_live_prices() -> None:
+            while True:
+                await asyncio.sleep(settings.live_check_minutes * 60)
+                try:
+                    await app.state.agent.check_live()
+                except Exception:
+                    log.exception("live price check failed")  # keep the loop alive for the next round
+
+        live_watcher = asyncio.create_task(watch_live_prices()) if live_catalog else None
         polling = None
         if settings.use_webhook:
             await bot.set_webhook(
@@ -88,6 +103,11 @@ def create_app(
         try:
             yield
         finally:
+            if live_watcher:
+                live_watcher.cancel()
+                with contextlib.suppress(asyncio.CancelledError):
+                    await live_watcher
+                await live_catalog.aclose()
             if polling:
                 await dp.stop_polling()
                 with contextlib.suppress(asyncio.CancelledError):

@@ -41,6 +41,8 @@ class Quote:
     store: str
     price: Decimal
     arrives_on: date
+    url: str | None = None  # the store's page, for a real product
+    live: bool = False  # a real product: the arrival date is an estimate, and buying it is only a sandbox test
 
 
 def _listing(product_id: str, store: str, ship_days: int, start_price: int, *changes: tuple[str, int]) -> Listing:

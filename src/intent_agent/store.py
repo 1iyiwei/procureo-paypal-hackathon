@@ -75,6 +75,8 @@ class Store:
             );
             """
         )
+        if "live" not in {r["name"] for r in self._db.execute("PRAGMA table_info(chats)")}:
+            self._db.execute("ALTER TABLE chats ADD COLUMN live INTEGER NOT NULL DEFAULT 0")
         self._db.commit()
 
     def add_order(self, order: Order) -> None:
@@ -124,6 +126,18 @@ class Store:
     def allow_chat(self, chat_id: int) -> None:
         self._db.execute("INSERT OR IGNORE INTO allowed_chats (chat_id) VALUES (?)", (chat_id,))
         self._db.commit()
+
+    def chat_live(self, chat_id: int) -> bool:
+        row = self._db.execute("SELECT live FROM chats WHERE chat_id = ?", (chat_id,)).fetchone()
+        return bool(row and row["live"])
+
+    def set_chat_live(self, chat_id: int, live: bool) -> None:
+        self.sim_now(chat_id)  # makes sure the chat exists
+        self._db.execute("UPDATE chats SET live = ? WHERE chat_id = ?", (int(live), chat_id))
+        self._db.commit()
+
+    def live_chats(self) -> list[int]:
+        return [r["chat_id"] for r in self._db.execute("SELECT chat_id FROM chats WHERE live = 1")]
 
     def sim_now(self, chat_id: int) -> datetime:
         self._db.execute(
@@ -208,7 +222,7 @@ class Store:
         self._db.close()
 
 
-_DECIMALS = {"max_price", "auto_limit", "pending_auto_limit", "last_low", "last_offer", "bought_price"}
+_DECIMALS = {"max_price", "auto_limit", "pending_auto_limit", "last_low", "last_offer", "bought_price", "reference_price"}
 _DATES = {"arrive_by", "arrives_on"}
 
 

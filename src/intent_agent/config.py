@@ -39,6 +39,9 @@ class Settings(PayPalSettings):
     openai_model: str = "gpt-6.1-terra"
     # If set, a chat must send this code once before the bot does anything for it. Empty means open to everyone.
     access_code: str = ""
+    # Channel3 supplies real products and prices for /live. Without a key, only the scripted demo is available.
+    channel3_api_key: str = ""
+    live_check_minutes: int = 180
     # Show notes about the simulated stores and /ff in the chat. Turn off when recording the demo video.
     demo_hints: bool = True
 

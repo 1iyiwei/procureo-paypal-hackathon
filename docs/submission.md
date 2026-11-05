@@ -55,14 +55,14 @@ Only if you set the limits and can see and stop everything it does.
 
 It's built for individual shoppers, buying for themselves or as a gift.
 
-All of this works today, with three limits. The stores, products and prices are simulated, on a sped-up clock, so that a judge can see weeks of price changes in a few minutes. Payments run in the PayPal sandbox. And the agent reads a video from a single preview frame, and doesn't take voice notes yet.
+All of this works today, in two modes. The default demo uses simulated stores and prices on a sped-up clock, so that a judge can see weeks of price changes in a few minutes. Sending `/live` switches a chat to real products and prices from Channel3, checked in the background on the real calendar, with estimated arrival dates. Payments run in the PayPal sandbox in both modes, so in live mode the agent labels a purchase as a test, and nothing ships. And the agent reads a video from a single preview frame, and doesn't take voice notes yet.
 
 ### How we built it
 
 - **Interface:** a Telegram bot. Chat handles text, photos, video and links natively, and, crucially, it can
   reach you later. An agent that waits needs a way to say "the price dropped, buying now."
 - **Payments:** PayPal Orders API v2 (sandbox) for checkout from the chat; PayPal Vault (saved payment methods) for purchases the agent makes on its own; PayPal refunds for cancelling a purchase.
-- **AI:** an OpenAI model (GPT-6.1 Terra) turns the text and attachments into a structured request and matches it to products. It only proposes: only a button tap can raise a limit or allow automatic buying, and code re-checks the limits right before every payment.
+- **AI:** an OpenAI model (GPT-6.1 Terra) turns the text and attachments into a structured request and matches it to products; in live mode, Channel3 supplies the real products and prices. The model only proposes: only a button tap can raise a limit or allow automatic buying, and code re-checks the limits right before every payment.
 - **Backend:** Python, FastAPI, aiogram, and SQLite, deployed on Render. *(Not deployed yet: true only after that's done.)*
 
 ### Challenges we ran into
@@ -87,14 +87,14 @@ All of this works today, with three limits. The stores, products and prices are 
 
 ### What's next
 
-- Real merchants and live PayPal, which means settling the merchant-of-record question: a marketplace model, or merchants' own PayPal accounts.
+- Real purchases with live PayPal, which means settling the merchant-of-record question: a marketplace model, or merchants' own PayPal accounts.
 - More reasons to wait: back in stock, a better offer, and flight prices, as well as price drops.
 - Better handling of open-ended requests. "A gift for a friend who's a doctor" currently matches everything, and the agent should ask a follow-up question instead.
 - Small businesses: the same standing order, with team approvals and recurring restocks of supplies.
 
 ## Built with
 
-Claude Code, python, fastapi, aiogram, telegram, paypal, openai, sqlite, render
+Claude Code, python, fastapi, aiogram, telegram, paypal, openai, channel3, sqlite, render
 
 ## Try it out
 
@@ -157,6 +157,9 @@ AI tools:
 - OpenAI GPT-6.1 Terra, through the Responses API with structured outputs: turns a message, plus any photo or video frame, into a structured standing order, works out what later messages mean, and matches requests to products.
 - OpenAI's hosted web search tool: reads product links the user sends, so my server never fetches user-supplied URLs.
 
+Other tools:
+- Channel3 (sponsor), in live mode: search finds real products, and product lookups check their current prices in the background.
+
 The model only proposes. Only a button tap can start watching, raise a limit or turn on automatic buying, and code re-checks the limits right before each payment.
 
 
@@ -176,7 +179,8 @@ Render
 Zapier
 None, used other AI tools.
 
-Render *(tick this only once it's deployed there; otherwise "None, used other AI tools")*
+Channel3
+Render *(tick this only once it's deployed there)*
 
 * Provide a URL to your public code repository on GitHub, GitLab or Bitbucket.
 The code repository must be publicly available. Must include: approved OSI license, README with setup instructions, clear explanation of how you used PayPal and AI in your project, along with any other tools or technologies used, including sponsor integrations (e.g., APIMatic, Postman/Astro, Render).
@@ -194,6 +198,7 @@ The stores and prices are simulated and payments use the PayPal sandbox, so no r
 2. Tap Start watching. Send /ff to skip to the next thing the agent has to say; repeat until it offers $189.
 3. To test checkout, tap Buy now with PayPal. To test automatic buying, tap Not yet, send "If it drops under $170, just buy it", confirm, and tap Save PayPal. Then send /ff, and the agent buys at $164 by itself.
 4. Try Why this one? and Cancel order (a real sandbox refund), and send /orders. Send /reset to start over.
+5. Optional: send /reset, then /live, and make a request. The agent searches real stores through Channel3 and asks you to confirm the products. Prices change on the real calendar, so nothing may happen during your test, and any purchase is a sandbox test where nothing ships. Send /demo to go back.
 
 When a sandbox.paypal.com page opens, log in with this test buyer account, not a real PayPal account:
 Email: *(judge sandbox personal account: paste into the form only)*

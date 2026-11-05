@@ -17,6 +17,7 @@ from decimal import Decimal
 from .brain import Brain, Image, Understanding, context_date
 from .catalog import Catalog, Quote
 from .checkout import Checkout
+from .live import Channel3Error, LiveCatalog, describe
 from .paypal import PayPalClient, PayPalError, capture_id_of
 from .store import Order, Store
 from .watcher import Action, StandingOrder, decide, eligible, may_auto_buy
@@ -25,6 +26,7 @@ log = logging.getLogger(__name__)
 
 ACTIVE = ("DRAFT", "WATCHING", "PAUSED")
 MAX_FAST_FORWARD = timedelta(days=60)
+MAX_LIVE_PRODUCTS = 3
 
 
 @dataclass(frozen=True)
@@ -54,6 +56,30 @@ def esc(text: str | None) -> str:
     return html.escape(text or "", quote=False)
 
 
+def arrival(q: Quote) -> str:
+    return f"Estimated arrival {day(q.arrives_on)}, as the store's shipping time isn't known." if q.live else f"Arrives {day(q.arrives_on)}."
+
+
+def store_link(q: Quote) -> str:
+    return f'<a href="{html.escape(q.url, quote=True)}">{esc(q.store)}</a>' if q.url else esc(q.store)
+
+
+TEST_PURCHASE = "PayPal is in sandbox mode here, so this is a test payment with fake money, and nothing will ship."
+
+
+def _within_budget_first(ids: list[str], quotes: list[Quote], limit: Decimal) -> list[str]:
+    """Keep the given order among products inside the limit, then the closest ones above it."""
+    lowest = {}
+    for q in quotes:
+        lowest[q.product.id] = min(q.price, lowest.get(q.product.id, q.price))
+    available = [i for i in ids if i in lowest]
+    return sorted(available, key=lambda i: (lowest[i] > limit, lowest[i] if lowest[i] > limit else 0))
+
+
+def _quote_lines(quotes: list[Quote]) -> list[str]:
+    return [f"• {esc(q.product.name)} at {store_link(q)}: {money(q.price)}" for q in sorted(quotes, key=lambda q: q.price)]
+
+
 class Agent:
     def __init__(
         self,
@@ -67,6 +93,7 @@ class Agent:
         public_base_url: str,
         currency: str = "USD",
         demo_hints: bool = True,
+        live_catalog: LiveCatalog | None = None,
     ):
         self.store = store
         self.paypal = paypal
@@ -77,12 +104,44 @@ class Agent:
         self.base_url = public_base_url.rstrip("/")
         self.currency = currency
         self.demo_hints = demo_hints
+        self.live_catalog = live_catalog
         checkout.on_paid = self.on_checkout_paid
+
+    # --- Clock and mode: a chat runs either the scripted demo on a simulated clock, or real products in real time ---
+
+    def now(self, chat_id: int) -> datetime:
+        return datetime.now().replace(microsecond=0) if self.store.chat_live(chat_id) else self.store.sim_now(chat_id)
+
+    async def set_mode(self, chat_id: int, live: bool) -> None:
+        if live and self.live_catalog is None:
+            return await self.send(chat_id, "Live mode isn't set up on this server.", None)
+        if self.store.chat_live(chat_id) != live and any(o.status in ACTIVE for o in self.store.standing_orders(chat_id)):
+            return await self.send(chat_id, "Finish or cancel your open standing orders first, or send /reset to start over.", None)
+        self.store.set_chat_live(chat_id, live)
+        if live:
+            return await self.send(
+                chat_id,
+                "<b>Live mode.</b> I'll search real stores and check real prices every few hours, on the real calendar, so "
+                f"this can take days or weeks. {TEST_PURCHASE} Send /demo to go back.",
+                None,
+            )
+        await self.send(chat_id, "Back to the demo, with simulated stores and a simulated clock.", None)
+
+    async def check_live(self, chat_id: int | None = None) -> bool:
+        """Evaluate live orders against current prices. One failing order doesn't stop the others."""
+        spoke = False
+        for chat in [chat_id] if chat_id is not None else self.store.live_chats():
+            for order in self.store.standing_orders(chat):
+                try:
+                    spoke = await self.evaluate(order, self.now(chat)) or spoke
+                except Exception:
+                    log.exception("live check failed for order %s", order.id)
+        return spoke
 
     # --- Incoming messages ---
 
     async def on_message(self, chat_id: int, text: str, images: list[Image] | None = None) -> None:
-        now = self.store.sim_now(chat_id)
+        now = self.now(chat_id)
         understood = await self.brain.understand(text, images or [], self._context(chat_id, now))
         log.info("understood: %s", understood.model_dump(exclude_none=True))
         handler = {
@@ -165,10 +224,13 @@ class Agent:
             # A different item or more room to spend needs a fresh confirmation, and automatic buying starts over.
             order.status, order.auto_limit, order.pending_auto_limit = "DRAFT", None, None
             order.product_ids, order.last_low, order.last_offer = [], None, None
+            order.candidate_ids, order.reference_price = [], None
             self.store.save_standing_order(order)
             self.store.add_event(order.id, now, "Changed; needs confirming again")
             return await self._send_card(order, "Updated. Please confirm before I start watching again.")
 
+        if spec_changed:
+            order.candidate_ids = []  # chosen for the old description
         if order.auto_limit is not None and order.max_price is not None and order.auto_limit > order.max_price:
             order.auto_limit = order.max_price
         self.store.save_standing_order(order)
@@ -206,6 +268,7 @@ class Agent:
             return await self.send(chat_id, "That standing order no longer exists.", None)
         handler = {
             "start": self._start_watching,
+            "watch": self._watch_candidates,
             "notyet": self._not_yet,
             "auto": self._confirm_auto,
             "why": self._why,
@@ -219,7 +282,9 @@ class Agent:
     async def _start_watching(self, order: StandingOrder) -> None:
         if order.status != "DRAFT" or order.max_price is None:
             return
-        now = self.store.sim_now(order.chat_id)
+        if self.store.chat_live(order.chat_id):
+            return await self._propose_live_products(order)
+        now = self.now(order.chat_id)
         ids = [i for i in await self.brain.source(order.summary, self.catalog.describe()) if i in self.catalog.products]
         if not ids:
             return await self.send(
@@ -228,16 +293,53 @@ class Agent:
                 "e-readers, espresso machines, backpacks, wool throws and GPS watches. Tell me what to change.",
                 None,
             )
+        await self._begin_watching(order, ids, self.catalog.quotes(ids, now), now)
+
+    async def _propose_live_products(self, order: StandingOrder) -> None:
+        """Real listings need a human check, so the user confirms the exact products before any are watched."""
+        now = self.now(order.chat_id)
+        try:
+            found = await self.live_catalog.search(order.summary, order.max_price)
+            allowed = {p.id for p in found}
+            matched = [i for i in await self.brain.source(order.summary, describe(found)) if i in allowed]
+            ids = _within_budget_first(matched, await self.live_catalog.quotes(matched, now), order.max_price)[:MAX_LIVE_PRODUCTS]
+            quotes = await self.live_catalog.quotes(ids, now)
+        except Channel3Error as e:
+            log.warning("live search failed: %s", e)
+            return await self.send(order.chat_id, "I couldn't reach the product search just now. Please try again in a moment.", [Button("Start watching", data=f"start:{order.id}")])
+        if not quotes:
+            return await self.send(order.chat_id, f"I couldn't find a real product in stock for: {esc(order.summary)}\n\nTell me what to change.", None)
+        order.candidate_ids = ids
+        self.store.save_standing_order(order)
+        lines = [f"I found these for {esc(order.title)}. Are they what you want?"]
+        lines += _quote_lines(quotes)
+        lines.append(f"\nIf not, tell me what to change. {TEST_PURCHASE}")
+        await self.send(order.chat_id, "\n".join(lines), [Button("Watch these", data=f"watch:{order.id}")])
+
+    async def _watch_candidates(self, order: StandingOrder) -> None:
+        if order.status != "DRAFT" or order.max_price is None or not order.candidate_ids:
+            return await self.send(order.chat_id, "That list is out of date. Tap Start watching on the latest card.", None)
+        now = self.now(order.chat_id)
+        try:
+            quotes = await self.live_catalog.quotes(order.candidate_ids, now)
+        except Channel3Error as e:
+            log.warning("live price check failed: %s", e)
+            return await self.send(order.chat_id, "I couldn't check prices just now. Please try again in a moment.", [Button("Watch these", data=f"watch:{order.id}")])
+        if quotes:
+            order.reference_price = min(q.price for q in quotes)
+        await self._begin_watching(order, order.candidate_ids, quotes, now)
+
+    async def _begin_watching(self, order: StandingOrder, ids: list[str], quotes: list[Quote], now: datetime) -> None:
         order.product_ids, order.status = ids, "WATCHING"
-        quotes = sorted(self.catalog.quotes(ids, now), key=lambda q: q.price)
+        quotes = sorted(quotes, key=lambda q: q.price)
         lines = [f"I'm watching these for {esc(order.title)}:"]
-        lines += [f"• {esc(q.product.name)} at {esc(q.store)}: {money(q.price)}" for q in quotes]
+        lines += _quote_lines(quotes)
         options = eligible(order, quotes)
         order.last_low = options[0].price if options and options[0].price > order.max_price else None
         self.store.save_standing_order(order)
         self.store.add_event(order.id, now, f"Started watching {len(quotes)} listings")
         lines.append("\nI'll message you when something changes, and I'll ask before buying.")
-        if self.demo_hints:
+        if self.demo_hints and not self.store.chat_live(order.chat_id):
             lines.append(f"\n<i>Demo: stores and prices are simulated, and today is {day(now)}. Send /ff to skip to the next change.</i>")
         await self.send(order.chat_id, "\n".join(lines), None)
         await self.evaluate(order, now)
@@ -245,7 +347,7 @@ class Agent:
     async def _not_yet(self, order: StandingOrder) -> None:
         if order.status != "WATCHING":
             return
-        now = self.store.sim_now(order.chat_id)
+        now = self.now(order.chat_id)
         self.store.add_event(order.id, now, f"You said not yet at {money(order.last_offer)}")
         await self.send(
             order.chat_id,
@@ -258,7 +360,7 @@ class Agent:
         if order.status in ACTIVE:
             order.status = "CANCELLED"
             self.store.save_standing_order(order)
-            self.store.add_event(order.id, self.store.sim_now(order.chat_id), "Cancelled")
+            self.store.add_event(order.id, self.now(order.chat_id), "Cancelled")
             await self.send(order.chat_id, f"Cancelled the standing order for {esc(order.title)}.", None)
 
     # --- Pause, resume, cancel by message ---
@@ -331,7 +433,7 @@ class Agent:
             await self._turn_on_auto(order, order.pending_auto_limit)
 
     async def _turn_on_auto(self, order: StandingOrder, limit: Decimal) -> None:
-        now = self.store.sim_now(order.chat_id)
+        now = self.now(order.chat_id)
         order.auto_limit, order.pending_auto_limit = limit, None
         self.store.save_standing_order(order)
         self.store.add_event(order.id, now, f"You allowed automatic buying under {money(limit)}")
@@ -368,7 +470,7 @@ class Agent:
         except PayPalError as e:
             log.warning("delete token failed: %s %s", e.status_code, e.body)
         self.store.set_saved_paypal(chat_id, None)
-        now = self.store.sim_now(chat_id)
+        now = self.now(chat_id)
         for order in self.store.standing_orders(chat_id):
             if order.automatic and order.status in ACTIVE:
                 order.auto_limit = None
@@ -379,8 +481,13 @@ class Agent:
     # --- Watching ---
 
     async def fast_forward(self, chat_id: int, limit: timedelta = MAX_FAST_FORWARD) -> bool:
-        """Advance this chat's clock hour by hour until the agent has something to say. True if it did."""
-        now = self.store.sim_now(chat_id)
+        """Advance this chat's clock hour by hour until the agent has something to say. True if it did.
+
+        A live chat's clock can't be moved, so this just checks current prices right away.
+        """
+        if self.store.chat_live(chat_id):
+            return await self.check_live(chat_id)
+        now = self.now(chat_id)
         watching = [o for o in self.store.standing_orders(chat_id) if o.status == "WATCHING"]
         if not watching:
             return False
@@ -397,7 +504,18 @@ class Agent:
 
     async def evaluate(self, order: StandingOrder, now: datetime) -> bool:
         """Act on a standing order at this moment. True if the user was told something."""
-        quotes = self.catalog.quotes(order.product_ids, now)
+        if self.store.chat_live(order.chat_id):
+            if order.status != "WATCHING":
+                return False
+            try:
+                quotes = await self.live_catalog.quotes(order.product_ids, now)
+            except Channel3Error as e:
+                log.warning("live price check failed for %s: %s", order.id, e)
+                return False  # unknown isn't the same as unavailable, so do nothing and try again later
+            # The user may have paused, changed or cancelled the order while prices were being fetched.
+            order = self.store.standing_order(order.id)
+        else:
+            quotes = self.catalog.quotes(order.product_ids, now)
         decision = decide(order, quotes, now)
         q = decision.quote
         match decision.action:
@@ -444,8 +562,8 @@ class Agent:
         self.store.add_event(order.id, now, f"Asked you about {money(q.price)} at {q.store}")
         await self.send(
             order.chat_id,
-            f"<b>{money(q.price)} at {esc(q.store)}</b>{lowest}, inside your {money(order.max_price)} limit.\n"
-            f"{esc(q.product.name)}. Arrives {day(q.arrives_on)}.",
+            f"<b>{money(q.price)} at {store_link(q)}</b>{lowest}, inside your {money(order.max_price)} limit.\n"
+            f"{esc(q.product.name)}. {arrival(q)}" + (f"\n{TEST_PURCHASE}" if q.live else ""),
             [button, Button("Not yet", data=f"notyet:{order.id}")],
         )
         return True
@@ -470,7 +588,7 @@ class Agent:
         await self.send(
             order.chat_id,
             f"Today is the last day to buy {esc(order.title)} in time. The lowest price is <b>{money(q.price)}</b> at "
-            f"{esc(q.store)}, arriving {day(q.arrives_on)}.",
+            f"{store_link(q)}. {arrival(q)}",
             [button] if button else None,
         )
         return True
@@ -516,15 +634,16 @@ class Agent:
         days_early = (order.arrive_by - q.arrives_on).days if order.arrive_by else None
         lowest = "the lowest price I'd seen" if order.last_low is None or q.price <= order.last_low else "the price I found"
         why = f"I compared {compared} {'stores' if compared != 1 else 'store'}. {money(q.price)} was {lowest}, under your {money(order.auto_limit)} limit"
-        why += f", and it arrives {days_early} days before {day(order.arrive_by)}." if days_early is not None else "."
+        arrives = "should arrive about" if q.live else "it arrives"
+        why += f", and {arrives} {days_early} days before {day(order.arrive_by)}." if days_early is not None else "."
         self._record_purchase(order, q.price, q.store, q.arrives_on, now, result.get("id"), capture_id_of(result), why)
         self.store.add_event(order.id, now, f"Bought automatically at {money(q.price)} from {q.store}")
         await self.send(
             order.chat_id,
-            f"<b>Bought: {esc(order.title)}, {money(q.price)}</b> at {esc(q.store)}\n"
+            f"<b>{'Test purchase' if q.live else 'Bought'}: {esc(order.title)}, {money(q.price)}</b> at {store_link(q)}\n"
             f"{moment(now)}. You set: buy automatically under {money(order.auto_limit)}"
             + (f", by {day(order.buy_by)}" if order.buy_by else "")
-            + f".\nPaid with your saved PayPal. Arrives {day(q.arrives_on)}.",
+            + f".\nPaid with your saved PayPal. {arrival(q)}" + (f"\n{TEST_PURCHASE}" if q.live else ""),
             [
                 Button("Receipt", data=f"receipt:{order.id}"),
                 Button("Why this one?", data=f"why:{order.id}"),
@@ -539,19 +658,28 @@ class Agent:
         order.arrives_on, order.paypal_order_id, order.capture_id, order.why = arrives_on, paypal_order_id, capture_id, why
         self.store.save_standing_order(order)
 
+    async def _quotes_or_none(self, order: StandingOrder, now: datetime) -> list[Quote]:
+        if not self.store.chat_live(order.chat_id):
+            return self.catalog.quotes(order.product_ids, now)
+        try:
+            return await self.live_catalog.quotes(order.product_ids, now)
+        except Channel3Error as e:
+            log.warning("live price check failed: %s", e)
+            return []
+
     async def on_checkout_paid(self, paid: Order, capture_id: str | None) -> None:
         """The buyer completed a PayPal checkout from an offer."""
         order = self.store.standing_order(paid.standing_order_id)
         if order is None:
             return
-        now = self.store.sim_now(order.chat_id)
+        now = self.now(order.chat_id)
         if order.status != "WATCHING":
             # Already bought or cancelled (say, an old Pay link was used): don't keep the money.
             if capture_id:
                 await self.paypal.refund_capture(capture_id)
             await self.send(order.chat_id, f"You paid {money(paid.amount)} but {esc(order.title)} is already {order.status.lower()}, so I refunded it.", None)
             return
-        q = next((q for q in self.catalog.quotes(order.product_ids, now) if paid.description == f"{q.product.name} from {q.store}"), None)
+        q = next((q for q in await self._quotes_or_none(order, now) if paid.description == f"{q.product.name} from {q.store}"), None)
         store, arrives_on = (q.store, q.arrives_on) if q else (paid.description, None)
         why = f"You approved this offer at {money(paid.amount)}, inside your {money(order.max_price)} limit."
         self._record_purchase(order, paid.amount, store, arrives_on, now, paid.order_id, capture_id, why)
@@ -586,7 +714,7 @@ class Agent:
             return await self.send(order.chat_id, "PayPal couldn't process the refund. Please try again in a moment.", None)
         order.status = "REFUNDED"
         self.store.save_standing_order(order)
-        now = self.store.sim_now(order.chat_id)
+        now = self.now(order.chat_id)
         self.store.add_event(order.id, now, f"Order cancelled; {money(order.bought_price)} refunded")
         await self.send(order.chat_id, f"Cancelled, and refunded {money(order.bought_price)} to your PayPal.", None)
 
