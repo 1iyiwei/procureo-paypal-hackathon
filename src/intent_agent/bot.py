@@ -1,11 +1,13 @@
 """Telegram handlers. `agent` and `checkout` are injected through the dispatcher."""
 
+import contextlib
+import hmac
 import logging
 import re
 from datetime import timedelta
 
 import openai
-from aiogram import Bot, F, Router
+from aiogram import BaseMiddleware, Bot, F, Router
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
@@ -14,6 +16,7 @@ from .agent import MAX_FAST_FORWARD, Agent, Button, day
 from .brain import Image
 from .checkout import Checkout, parse_amount
 from .paypal import PayPalError
+from .store import Store
 
 log = logging.getLogger(__name__)
 router = Router()
@@ -33,6 +36,32 @@ DEMO_HELP = (
 
 # Buttons that should stop working once tapped.
 ONE_TIME_ACTIONS = {"start", "notyet", "auto", "refund", "cancel"}
+
+
+class AccessGate(BaseMiddleware):
+    """Runs before every update. A chat gets nothing, including model calls, until it has sent the access code."""
+
+    def __init__(self, code: str, store: Store, demo_hints: bool):
+        self.code, self.store, self.demo_hints = code, store, demo_hints
+
+    async def __call__(self, handler, event, data):
+        chat = data.get("event_chat")
+        if chat is None:
+            return None
+        if self.store.chat_allowed(chat.id):
+            return await handler(event, data)
+        if event.callback_query:
+            return await event.callback_query.answer("Send your access code first.", show_alert=True)
+        if not event.message:
+            return None
+        # Accepts the code alone, or through a link such as t.me/<bot>?start=<code>.
+        sent = (event.message.text or "").removeprefix("/start").strip()
+        if not hmac.compare_digest(sent.encode(), self.code.encode()):
+            return await event.message.answer("Procureo is in private testing. Send your access code to continue.")
+        self.store.allow_chat(chat.id)
+        with contextlib.suppress(TelegramBadRequest):
+            await event.message.delete()  # keep the code out of the chat history
+        return await event.message.answer(HELP + (DEMO_HELP if self.demo_hints else ""), parse_mode="HTML")
 
 
 def keyboard(buttons: list[Button] | None) -> InlineKeyboardMarkup | None:

@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: intent-agent
+    name: procureo
     runtime: python
     # Free instances sleep when idle, which breaks price monitoring; use a paid plan for the demo.
     plan: starter
@@ -20,8 +20,10 @@ services:
         sync: false
       - key: OPENAI_API_KEY
         sync: false
-      - key: PUBLIC_BASE_URL
+      - key: ACCESS_CODE
         sync: false
+      - key: OPENAI_MODEL
+        value: gpt-6.1-terra
       - key: DATABASE_PATH
         value: /var/data/app.db
     disk:

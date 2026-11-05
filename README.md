@@ -17,6 +17,21 @@ The stores, products and prices are simulated. Voice notes aren't supported.
 button tap can start watching, raise a limit or turn on automatic buying, and code re-checks the limits right before
 every payment. Text inside photos and web pages can't change any of this.
 
+## How it uses PayPal and AI
+
+**PayPal, in the sandbox:**
+
+| API | What it does here |
+| --- | --- |
+| Orders v2 | Creates and captures an order when the user approves an offer with one-tap checkout |
+| Vault v3 (setup and payment tokens) | Saves PayPal once when the user opts in to automatic buying, and removes it on request |
+| Orders v2 with `vault_id` | Pays with no buyer present when a price falls under the user's limit, with a request ID so a retry can't charge twice |
+| Payments v2 refunds | Refunds a purchase when the user taps **Cancel order** |
+
+**AI:** OpenAI GPT-6.1 Terra, through the Responses API with structured outputs, turns messages, photos and video frames
+into a standing order and matches requests to products. OpenAI's hosted web search tool reads product links, so this
+server never fetches a URL a user sent. Claude Code was used to build the project; it isn't part of the running product.
+
 ## PayPal accounts: which login goes where
 
 Testing involves three different PayPal logins. Mixing them up is the most common way to get stuck.
@@ -101,10 +116,17 @@ PayPal and Telegram are mocked, so tests need no credentials.
 
 ## Deploy on Render
 
-[render.yaml](render.yaml) defines one web service with a small disk for SQLite. Set `PUBLIC_BASE_URL` to the
-service's `https://…onrender.com` URL; when it is https the bot switches to webhook mode automatically.
-Use a paid instance: free instances sleep when idle, which would miss price checks, and the demo must
-stay up through judging (Dec 1–15).
+[render.yaml](render.yaml) defines one web service with a small disk for SQLite. In the Render dashboard, choose
+**New → Blueprint**, select this repo, and fill in the secrets it asks for. The bot then uses the service's https URL
+and switches to webhook mode by itself. Use a paid instance: free instances sleep when idle, and the demo must stay up
+through judging (Dec 1–15).
+
+**Access code.** While `ACCESS_CODE` is set, a chat must send that code once before the bot does anything for it, so
+strangers can't use up model credit. The link `https://t.me/<bot>?start=<code>` does this in one tap. Give the code
+only in the private judges' field of the form. To open the bot to everyone, remove the variable.
+
+**Use a second bot for local work.** Running the bot locally with the deployed bot's token removes its webhook, and the
+deployed bot stops receiving messages. Create a separate bot with @BotFather for your local `.env`.
 
 ## Layout
 

@@ -12,7 +12,7 @@ from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.responses import HTMLResponse
 
 from .agent import Agent, Button
-from .bot import keyboard, router
+from .bot import AccessGate, keyboard, router
 from .brain import OpenAIBrain
 from .catalog import Catalog
 from .checkout import CaptureResult, Checkout
@@ -66,6 +66,8 @@ def create_app(
         app.state.bot_username = (await bot.get_me()).username
 
         dp = Dispatcher()
+        if settings.access_code:
+            dp.update.outer_middleware(AccessGate(settings.access_code, store, settings.demo_hints))
         dp.include_router(router)
         dp["checkout"] = app.state.checkout
         dp["agent"] = app.state.agent

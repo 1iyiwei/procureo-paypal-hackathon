@@ -52,6 +52,9 @@ class Store:
                 payment_token_id TEXT,
                 paypal_email     TEXT
             );
+            CREATE TABLE IF NOT EXISTS allowed_chats (
+                chat_id INTEGER PRIMARY KEY
+            );
             CREATE TABLE IF NOT EXISTS standing_orders (
                 id      TEXT PRIMARY KEY,
                 chat_id INTEGER NOT NULL,
@@ -114,6 +117,13 @@ class Store:
         return cur.rowcount == 1
 
     # --- Chats: each has its own simulated clock and, optionally, a saved PayPal ---
+
+    def chat_allowed(self, chat_id: int) -> bool:
+        return self._db.execute("SELECT 1 FROM allowed_chats WHERE chat_id = ?", (chat_id,)).fetchone() is not None
+
+    def allow_chat(self, chat_id: int) -> None:
+        self._db.execute("INSERT OR IGNORE INTO allowed_chats (chat_id) VALUES (?)", (chat_id,))
+        self._db.commit()
 
     def sim_now(self, chat_id: int) -> datetime:
         self._db.execute(
