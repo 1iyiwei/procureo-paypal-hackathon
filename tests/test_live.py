@@ -236,10 +236,40 @@ async def test_demo_chats_are_not_touched_by_live_checks(live):
     assert not live.store.chat_live(other)
 
 
-async def test_mode_cant_change_with_open_orders(live):
-    await live.draft()
+async def test_mode_cant_change_while_watching(live):
+    await live.watching()
     await live.agent.set_mode(CHAT, False)
     assert live.store.chat_live(CHAT) and "first" in live.last[0]
+
+
+async def test_a_failed_demo_search_points_to_live_and_the_draft_carries_over(live):
+    live.store.set_chat_live(CHAT, False)
+    live.brain.product_ids = []
+    await live.draft()
+    await live.tap("Start watching")
+    assert "couldn't find" in live.last[0] and "/live" in live.last[0]
+
+    await live.agent.set_mode(CHAT, True)
+    assert live.store.chat_live(CHAT) and live.order().status == "DRAFT"
+    assert "Standing order: headphones for Sam" in live.last[0]
+
+    live.brain.product_ids = ["p1"]
+    live.router.post(f"{CHANNEL3_URL}/v1/search").respond(json={"products": [product()]})
+    live.price(248.0)
+    await live.tap("Start watching")
+    assert "Sony WH-1000XM5" in live.last[0]
+
+
+async def test_real_products_dont_follow_a_draft_back_to_the_demo(live):
+    live.router.post(f"{CHANNEL3_URL}/v1/search").respond(json={"products": [product()]})
+    live.price(248.0)
+    await live.draft()
+    await live.tap("Start watching")
+    watch = next(b for b in live.last[1] if "Watch these" in b.text)
+    await live.agent.set_mode(CHAT, False)
+    assert live.order().candidate_ids == []
+    await live.agent.on_button(CHAT, watch.data)
+    assert live.order().status == "DRAFT" and "out of date" in live.last[0]
 
 
 async def test_live_mode_needs_a_key():

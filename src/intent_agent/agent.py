@@ -115,17 +115,26 @@ class Agent:
     async def set_mode(self, chat_id: int, live: bool) -> None:
         if live and self.live_catalog is None:
             return await self.send(chat_id, "Live mode isn't set up on this server.", None)
-        if self.store.chat_live(chat_id) != live and any(o.status in ACTIVE for o in self.store.standing_orders(chat_id)):
-            return await self.send(chat_id, "Finish or cancel your open standing orders first, or send /reset to start over.", None)
+        orders = self.store.standing_orders(chat_id)
+        if self.store.chat_live(chat_id) != live and any(o.status in ("WATCHING", "PAUSED") for o in orders):
+            return await self.send(chat_id, "Finish or cancel the standing orders I'm watching first, or send /reset to start over.", None)
+        changed = self.store.chat_live(chat_id) != live
         self.store.set_chat_live(chat_id, live)
         if live:
-            return await self.send(
+            await self.send(
                 chat_id,
                 "<b>Live mode.</b> I'll search real stores and check real prices every few hours, on the real calendar, so "
                 f"this can take days or weeks. {TEST_PURCHASE} Send /demo to go back.",
                 None,
             )
-        await self.send(chat_id, "Back to the demo, with simulated stores and a simulated clock.", None)
+        else:
+            await self.send(chat_id, "Back to the demo, with simulated stores and a simulated clock.", None)
+        drafts = [o for o in orders if o.status == "DRAFT"]
+        if changed and drafts:  # nothing has started yet, so a draft can carry over without retyping it
+            draft = drafts[-1]
+            draft.candidate_ids = []  # chosen from the other mode's products
+            self.store.save_standing_order(draft)
+            await self._send_card(draft)
 
     async def check_live(self, chat_id: int | None = None) -> bool:
         """Evaluate live orders against current prices. One failing order doesn't stop the others."""
@@ -290,7 +299,8 @@ class Agent:
             return await self.send(
                 order.chat_id,
                 f"I couldn't find a match in the demo stores for: {esc(order.summary)}\n\nThey carry headphones, earbuds, "
-                "e-readers, espresso machines, backpacks, wool throws and GPS watches. Tell me what to change.",
+                "e-readers, espresso machines, backpacks, wool throws and GPS watches. Tell me what to change"
+                + (", or send /live to search real stores." if self.live_catalog else "."),
                 None,
             )
         await self._begin_watching(order, ids, self.catalog.quotes(ids, now), now)
